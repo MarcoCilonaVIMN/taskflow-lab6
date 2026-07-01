@@ -12,12 +12,24 @@ comandi esatti.
 - **Node** — 22 LTS
 
 ## Struttura
+Monorepo con npm workspaces (`api`, `web`, `e2e`).
+
 ```
 taskflow/
-├── api/  src/{routes,services,app.ts,server.ts,types.ts}  tests/
-├── web/  src/{components,App.tsx,main.tsx,api.ts,types.ts}
-├── e2e/  tests/  playwright.config.ts
-└── .github/workflows/ci.yml
+├── api/                        # Backend — Node.js + Express + TypeScript
+│   ├── src/
+│   │   ├── routes/
+│   │   ├── services/
+│   │   └── app.ts
+│   └── tests/
+├── web/                        # Frontend — React + TypeScript + Vite
+│   ├── src/
+│   │   └── components/
+│   └── tests/
+├── e2e/                        # End-to-end — Playwright
+├── .github/
+│   └── workflows/
+└── CLAUDE.md
 ```
 
 ## Comandi esatti (usali per build/test/self-check)
