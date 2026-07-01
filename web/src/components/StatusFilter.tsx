@@ -3,10 +3,10 @@ import type { TaskStatus } from "../types";
 type FilterValue = TaskStatus | "all";
 
 const OPTIONS: { value: FilterValue; label: string }[] = [
-  { value: "all",         label: "Tutti" },
-  { value: "todo",        label: "Todo" },
+  { value: "all", label: "Tutti" },
+  { value: "todo", label: "Todo" },
   { value: "in-progress", label: "In Progress" },
-  { value: "done",        label: "Done" },
+  { value: "done", label: "Done" },
 ];
 
 interface StatusFilterProps {
@@ -16,7 +16,11 @@ interface StatusFilterProps {
 
 export function StatusFilter({ current, onChange }: StatusFilterProps) {
   return (
-    <div className="buttons has-addons" role="group" aria-label="Filtra per stato">
+    <fieldset
+      className="buttons has-addons"
+      aria-label="Filtra per stato"
+      style={{ border: "none", padding: 0, margin: 0 }}
+    >
       {OPTIONS.map(({ value, label }) => (
         <button
           key={value}
@@ -28,6 +32,6 @@ export function StatusFilter({ current, onChange }: StatusFilterProps) {
           {label}
         </button>
       ))}
-    </div>
+    </fieldset>
   );
 }

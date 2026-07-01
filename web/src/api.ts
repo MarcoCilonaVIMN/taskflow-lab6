@@ -1,4 +1,9 @@
-import type { Task, TaskStatus, CreateTaskInput, UpdateTaskInput } from "./types";
+import type {
+  CreateTaskInput,
+  Task,
+  TaskStatus,
+  UpdateTaskInput,
+} from "./types";
 
 const BASE = "/api/tasks";
 
@@ -25,7 +30,10 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
   return handleResponse<Task>(res);
 }
 
-export async function updateTask(id: string, input: UpdateTaskInput): Promise<Task> {
+export async function updateTask(
+  id: string,
+  input: UpdateTaskInput,
+): Promise<Task> {
   const res = await fetch(`${BASE}/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },

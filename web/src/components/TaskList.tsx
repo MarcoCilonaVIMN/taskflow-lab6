@@ -13,18 +13,23 @@ export function TaskList({ filter, refreshKey }: TaskListProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey è un contatore esterno intenzionale per forzare il re-fetch
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
     setError(null);
 
     getTasks(filter === "all" ? undefined : filter)
-      .then((data) => { if (!controller.signal.aborted) setTasks(data); })
+      .then((data) => {
+        if (!controller.signal.aborted) setTasks(data);
+      })
       .catch((err) => {
         if (!controller.signal.aborted)
           setError(err instanceof Error ? err.message : "Errore caricamento");
       })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
 
     return () => controller.abort();
   }, [filter, refreshKey]);
@@ -67,7 +72,12 @@ export function TaskList({ filter, refreshKey }: TaskListProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
       {tasks.map((task) => (
-        <TaskCard key={task.id} task={task} onUpdated={handleUpdated} onDeleted={handleDeleted} />
+        <TaskCard
+          key={task.id}
+          task={task}
+          onUpdated={handleUpdated}
+          onDeleted={handleDeleted}
+        />
       ))}
     </div>
   );

@@ -56,7 +56,9 @@ export function TaskCard({ task, onUpdated, onDeleted }: TaskCardProps) {
   }
 
   const date = new Date(task.createdAt).toLocaleDateString("it-IT", {
-    day: "2-digit", month: "short", year: "numeric",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
   });
 
   return (
@@ -67,7 +69,7 @@ export function TaskCard({ task, onUpdated, onDeleted }: TaskCardProps) {
             <p className="title is-6 mb-0">{task.title}</p>
           </div>
           <div className="level-right">
-            <span className={TAG_CLASS[task.status]} aria-label="stato">
+            <span className={TAG_CLASS[task.status]}>
               {STATUS_LABELS[task.status]}
             </span>
           </div>

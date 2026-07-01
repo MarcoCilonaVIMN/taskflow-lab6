@@ -36,7 +36,9 @@ export function TaskForm({ onCreated }: TaskFormProps) {
       <p className="title is-5 mb-4">Nuovo Task</p>
 
       <div className="field">
-        <label className="label" htmlFor="task-title">Titolo *</label>
+        <label className="label" htmlFor="task-title">
+          Titolo *
+        </label>
         <div className="control">
           <input
             id="task-title"
@@ -52,7 +54,9 @@ export function TaskForm({ onCreated }: TaskFormProps) {
       </div>
 
       <div className="field">
-        <label className="label" htmlFor="task-description">Descrizione</label>
+        <label className="label" htmlFor="task-description">
+          Descrizione
+        </label>
         <div className="control">
           <textarea
             id="task-description"
