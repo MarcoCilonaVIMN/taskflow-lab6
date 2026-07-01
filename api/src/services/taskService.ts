@@ -36,6 +36,10 @@ export class TaskService {
   remove(id: string): boolean {
     return this.tasks.delete(id);
   }
+
+  reset(): void {
+    this.tasks.clear();
+  }
 }
 
 export const taskService = new TaskService();

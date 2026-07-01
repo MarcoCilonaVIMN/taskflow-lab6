@@ -7,6 +7,13 @@ export const tasksRouter = Router();
 
 const VALID_STATUSES: TaskStatus[] = ["todo", "in-progress", "done"];
 
+// Rimuove zero-width (​-‍, ﻿) e control chars (\x00-\x1F),
+// poi applica trim(). Usato per rilevare titoli visivamente vuoti.
+const INVISIBLE_RE = new RegExp("[​-‍﻿\x00-\x1F]", "g");
+function isBlankTitle(value: string): boolean {
+  return value.replace(INVISIBLE_RE, "").trim() === "";
+}
+
 function problem(res: Response, status: number, title: string, detail: string) {
   res.status(status).contentType("application/problem+json").json({
     type: `https://httpstatuses.com/${status}`,
@@ -28,7 +35,7 @@ tasksRouter.get("/", (req: Request, res: Response) => {
 // POST /api/tasks
 tasksRouter.post("/", (req: Request, res: Response) => {
   const { title, description } = req.body as CreateTaskInput;
-  if (!title || title.trim() === "") {
+  if (!title || isBlankTitle(title)) {
     return problem(res, 400, "Bad Request", "title is required and cannot be empty");
   }
   const task = taskService.create({ title: title.trim(), description });
@@ -40,7 +47,7 @@ tasksRouter.patch("/:id", (req: Request<{ id: string }>, res: Response) => {
   const { id } = req.params;
   const patch = req.body as UpdateTaskInput;
 
-  if (patch.title !== undefined && patch.title.trim() === "") {
+  if (patch.title !== undefined && isBlankTitle(patch.title)) {
     return problem(res, 400, "Bad Request", "title cannot be empty");
   }
   if (patch.status !== undefined && !VALID_STATUSES.includes(patch.status)) {

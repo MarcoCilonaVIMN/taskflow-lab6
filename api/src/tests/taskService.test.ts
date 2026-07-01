@@ -1,10 +1,14 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { test } from "@fast-check/vitest";
 import * as fc from "fast-check";
-import { TaskService } from "../services/taskService";
+import { TaskService, taskService } from "../services/taskService";
 import type { TaskStatus } from "../types";
+import request from "supertest";
+import { app } from "../app";
 
-// Ogni suite usa una istanza fresca — nessuna contaminazione tra test.
+// ---------------------------------------------------------------------------
+// SERVICE — istanza fresca per ogni test unitario
+// ---------------------------------------------------------------------------
 let svc: TaskService;
 beforeEach(() => {
   svc = new TaskService();
@@ -43,6 +47,10 @@ describe("create", () => {
 describe("getAll", () => {
   it("ritorna array vuoto quando non ci sono task", () => {
     expect(svc.getAll()).toEqual([]);
+  });
+
+  it("ritorna array vuoto con filtro attivo e store vuoto", () => {
+    expect(svc.getAll("done")).toEqual([]);
   });
 
   it("ritorna tutti i task senza filtro", () => {
@@ -131,6 +139,21 @@ describe("update", () => {
     expect(updated!.status).toBe("done");
   });
 
+  it("id e createdAt restano invariati dopo update", () => {
+    const task = svc.create({ title: "T" });
+    const updated = svc.update(task.id, { title: "Nuovo", status: "done" });
+
+    expect(updated!.id).toBe(task.id);
+    expect(updated!.createdAt).toBe(task.createdAt);
+  });
+
+  it("patch vuota {} restituisce il task invariato", () => {
+    const task = svc.create({ title: "T" });
+    const updated = svc.update(task.id, {});
+
+    expect(updated).toEqual(task);
+  });
+
   it("persiste la modifica — getById riflette il nuovo valore", () => {
     const task = svc.create({ title: "T" });
     svc.update(task.id, { status: "done" });
@@ -164,6 +187,12 @@ describe("remove", () => {
     expect(svc.remove("id-inesistente")).toBe(false);
   });
 
+  it("doppia cancellazione: la seconda chiamata ritorna false", () => {
+    const task = svc.create({ title: "T" });
+    svc.remove(task.id);
+    expect(svc.remove(task.id)).toBe(false);
+  });
+
   it("non rimuove altri task", () => {
     const a = svc.create({ title: "A" });
     const b = svc.create({ title: "B" });
@@ -182,7 +211,6 @@ describe("remove", () => {
 // PROPERTY TEST — invarianti di dominio con fast-check
 // ---------------------------------------------------------------------------
 describe("property tests", () => {
-  // Arbitrari riusabili
   const titleArb = fc
     .oneof(
       fc.string({ minLength: 1, maxLength: 80 }),
@@ -191,11 +219,9 @@ describe("property tests", () => {
     .filter((s) => s.trim().length > 0);
 
   const statusArb = fc.constantFrom<TaskStatus>("todo", "in-progress", "done");
-
   const descriptionArb = fc.option(fc.string({ minLength: 1, maxLength: 200 }), { nil: undefined });
 
-  // --- Proprietà 1 ---
-  // Per qualsiasi titolo non-vuoto, create() restituisce un task con esattamente quel titolo
+  // Proprietà 1: create restituisce un task con esattamente il titolo passato
   test.prop([titleArb, descriptionArb])(
     "create: il task restituito ha esattamente il titolo passato in input",
     (title, description) => {
@@ -209,8 +235,7 @@ describe("property tests", () => {
     }
   );
 
-  // --- Proprietà 2 ---
-  // Dopo remove(), getById() ritorna sempre null per quell'id
+  // Proprietà 2: dopo remove(), getById() ritorna sempre null
   test.prop([titleArb])(
     "remove: dopo la cancellazione getById() ritorna null",
     (title) => {
@@ -221,29 +246,31 @@ describe("property tests", () => {
     }
   );
 
-  // --- Proprietà 3 ---
-  // getAll(status) ritorna esclusivamente task con quello status,
-  // anche in presenza di altri task con stati diversi
+  // Proprietà 3: getAll(status) ritorna esattamente i task con quello status
+  // — verifica sia "nessun intruso" sia "nessuna omissione"
   test.prop([
     fc.array(fc.record({ title: titleArb, status: statusArb }), { minLength: 1, maxLength: 10 }),
     statusArb,
   ])(
-    "getAll(status): ogni elemento del risultato ha esattamente lo status filtrato",
+    "getAll(status): risultato coincide esattamente con i task aventi quello status",
     (inputs, filterStatus) => {
-      // Popolazione store con task a stati misti
-      for (const { title, status } of inputs) {
+      const created = inputs.map(({ title, status }) => {
         const t = svc.create({ title });
         svc.update(t.id, { status });
-      }
+        return { ...t, status };
+      });
 
+      const expectedCount = created.filter((t) => t.status === filterStatus).length;
       const filtered = svc.getAll(filterStatus);
 
+      // nessun intruso
       expect(filtered.every((t) => t.status === filterStatus)).toBe(true);
+      // nessuna omissione
+      expect(filtered).toHaveLength(expectedCount);
     }
   );
 
-  // --- Proprietà bonus ---
-  // getAll() senza filtro include tutti i task creati (nessuna perdita)
+  // Proprietà bonus: getAll() senza filtro non perde task
   test.prop([fc.array(titleArb, { minLength: 1, maxLength: 15 })])(
     "getAll senza filtro include tutti i task creati",
     (titles) => {
@@ -256,20 +283,123 @@ describe("property tests", () => {
 });
 
 // ---------------------------------------------------------------------------
-// ROUTE — validazione input via supertest (400 e 404)
+// ROUTE — il singleton viene resettato prima di ogni test
+// per evitare stato condiviso e dipendenza dall'ordine
 // ---------------------------------------------------------------------------
-import request from "supertest";
-import { app } from "../app";
+describe("routes", () => {
+  beforeEach(() => {
+    taskService.reset();
+  });
 
-describe("routes — validazione e error handling", () => {
-  it("POST titolo vuoto → 400 problem+json", async () => {
+  // --- Happy path ---
+
+  it("GET /api/tasks → 200 con array", async () => {
+    const res = await request(app).get("/api/tasks");
+    expect(res.status).toBe(200);
+    expect(res.body).toBeInstanceOf(Array);
+  });
+
+  it("GET /api/tasks restituisce i task creati", async () => {
+    await request(app).post("/api/tasks").send({ title: "T1" });
+    await request(app).post("/api/tasks").send({ title: "T2" });
+
+    const res = await request(app).get("/api/tasks");
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(2);
+  });
+
+  it("GET /api/tasks?status=todo → 200 solo task con status todo", async () => {
+    const post = await request(app).post("/api/tasks").send({ title: "A" });
+    const id = post.body.id;
+    await request(app).post("/api/tasks").send({ title: "B" });
+    await request(app).patch(`/api/tasks/${id}`).send({ status: "done" });
+
+    const res = await request(app).get("/api/tasks?status=todo");
+    expect(res.status).toBe(200);
+    expect(res.body.every((t: { status: string }) => t.status === "todo")).toBe(true);
+  });
+
+  it("POST con titolo valido → 201 + body corretto", async () => {
     const res = await request(app)
       .post("/api/tasks")
-      .send({ title: "" });
+      .send({ title: "Nuovo task", description: "desc" });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({
+      title: "Nuovo task",
+      description: "desc",
+      status: "todo",
+    });
+    expect(res.body.id).toBeTypeOf("string");
+    expect(res.body.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("POST con spazi attorno al titolo → titolo trimmato nel task", async () => {
+    const res = await request(app)
+      .post("/api/tasks")
+      .send({ title: "  Task con spazi  " });
+
+    expect(res.status).toBe(201);
+    expect(res.body.title).toBe("Task con spazi");
+  });
+
+  it("PATCH solo title su task esistente → 200 titolo aggiornato", async () => {
+    const { body: created } = await request(app)
+      .post("/api/tasks")
+      .send({ title: "Originale" });
+
+    const res = await request(app)
+      .patch(`/api/tasks/${created.id}`)
+      .send({ title: "Modificato" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.title).toBe("Modificato");
+    expect(res.body.status).toBe("todo");
+  });
+
+  it("PATCH body vuoto {} su task esistente → 200 task invariato", async () => {
+    const { body: created } = await request(app)
+      .post("/api/tasks")
+      .send({ title: "Stabile" });
+
+    const res = await request(app)
+      .patch(`/api/tasks/${created.id}`)
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.title).toBe("Stabile");
+    expect(res.body.status).toBe("todo");
+  });
+
+  it("DELETE task esistente → 204 body vuoto", async () => {
+    const { body: created } = await request(app)
+      .post("/api/tasks")
+      .send({ title: "Da eliminare" });
+
+    const res = await request(app).delete(`/api/tasks/${created.id}`);
+    expect(res.status).toBe(204);
+    expect(res.text).toBe("");
+  });
+
+  // --- Validazione e error handling ---
+
+  it("POST titolo vuoto → 400 RFC 9457 completo", async () => {
+    const res = await request(app).post("/api/tasks").send({ title: "" });
 
     expect(res.status).toBe(400);
     expect(res.headers["content-type"]).toMatch(/problem\+json/);
-    expect(res.body).toMatchObject({ status: 400, title: "Bad Request" });
+    expect(res.body).toMatchObject({
+      type: expect.stringContaining("400"),
+      title: "Bad Request",
+      status: 400,
+      detail: expect.any(String),
+    });
+  });
+
+  it("POST titolo solo spazi → 400", async () => {
+    const res = await request(app).post("/api/tasks").send({ title: "   " });
+    expect(res.status).toBe(400);
+    expect(res.headers["content-type"]).toMatch(/problem\+json/);
   });
 
   it("POST senza title → 400", async () => {
@@ -278,51 +408,105 @@ describe("routes — validazione e error handling", () => {
       .send({ description: "nessun titolo" });
 
     expect(res.status).toBe(400);
+    expect(res.headers["content-type"]).toMatch(/problem\+json/);
   });
 
-  it("GET ?status=invalido → 400 problem+json", async () => {
+  it("GET ?status=invalido → 400 RFC 9457 completo", async () => {
     const res = await request(app).get("/api/tasks?status=invalido");
+
     expect(res.status).toBe(400);
     expect(res.headers["content-type"]).toMatch(/problem\+json/);
+    expect(res.body).toMatchObject({
+      type: expect.stringContaining("400"),
+      title: "Bad Request",
+      status: 400,
+      detail: expect.any(String),
+    });
   });
 
-  it("PATCH id inesistente → 404 problem+json", async () => {
+  it("PATCH titolo vuoto → 400 RFC 9457 completo", async () => {
+    const { body: created } = await request(app)
+      .post("/api/tasks")
+      .send({ title: "T" });
+
     const res = await request(app)
-      .patch("/api/tasks/id-inesistente")
-      .send({ status: "done" });
+      .patch(`/api/tasks/${created.id}`)
+      .send({ title: "" });
 
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(400);
     expect(res.headers["content-type"]).toMatch(/problem\+json/);
-    expect(res.body).toMatchObject({ status: 404, title: "Not Found" });
+    expect(res.body).toMatchObject({ status: 400, title: "Bad Request", detail: expect.any(String) });
   });
 
-  it("PATCH status non valido → 400 problem+json", async () => {
+  it("PATCH titolo solo spazi → 400", async () => {
+    const { body: created } = await request(app)
+      .post("/api/tasks")
+      .send({ title: "T" });
+
+    const res = await request(app)
+      .patch(`/api/tasks/${created.id}`)
+      .send({ title: "   " });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("PATCH status non valido → 400 RFC 9457 completo", async () => {
     const res = await request(app)
       .patch("/api/tasks/qualsiasi-id")
       .send({ status: "strano" });
 
     expect(res.status).toBe(400);
     expect(res.headers["content-type"]).toMatch(/problem\+json/);
+    expect(res.body).toMatchObject({ status: 400, title: "Bad Request", detail: expect.any(String) });
   });
 
-  it("DELETE id inesistente → 404 problem+json", async () => {
-    const res = await request(app).delete("/api/tasks/id-inesistente");
+  it("PATCH id inesistente → 404 RFC 9457 completo", async () => {
+    const res = await request(app)
+      .patch("/api/tasks/id-inesistente")
+      .send({ status: "done" });
+
     expect(res.status).toBe(404);
     expect(res.headers["content-type"]).toMatch(/problem\+json/);
+    expect(res.body).toMatchObject({
+      type: expect.stringContaining("404"),
+      title: "Not Found",
+      status: 404,
+      detail: expect.any(String),
+    });
   });
 
-  it("flusso completo: crea → aggiorna → elimina", async () => {
+  it("DELETE id inesistente → 404 RFC 9457 completo", async () => {
+    const res = await request(app).delete("/api/tasks/id-inesistente");
+
+    expect(res.status).toBe(404);
+    expect(res.headers["content-type"]).toMatch(/problem\+json/);
+    expect(res.body).toMatchObject({
+      type: expect.stringContaining("404"),
+      title: "Not Found",
+      status: 404,
+      detail: expect.any(String),
+    });
+  });
+
+  // --- Flusso completo ---
+
+  it("flusso completo: crea → aggiorna status → aggiorna title → elimina", async () => {
     const post = await request(app)
       .post("/api/tasks")
       .send({ title: "Flusso completo" });
     expect(post.status).toBe(201);
-    const id = post.body.id;
+    const id: string = post.body.id;
 
-    const patch = await request(app)
+    const patch1 = await request(app)
       .patch(`/api/tasks/${id}`)
-      .send({ status: "done" });
-    expect(patch.status).toBe(200);
-    expect(patch.body.status).toBe("done");
+      .send({ status: "in-progress" });
+    expect(patch1.body.status).toBe("in-progress");
+
+    const patch2 = await request(app)
+      .patch(`/api/tasks/${id}`)
+      .send({ title: "Completato", status: "done" });
+    expect(patch2.body.title).toBe("Completato");
+    expect(patch2.body.status).toBe("done");
 
     const del = await request(app).delete(`/api/tasks/${id}`);
     expect(del.status).toBe(204);
@@ -330,4 +514,118 @@ describe("routes — validazione e error handling", () => {
     const list = await request(app).get("/api/tasks");
     expect(list.body.find((t: { id: string }) => t.id === id)).toBeUndefined();
   });
+});
+
+// ---------------------------------------------------------------------------
+// INPUT EDGE CASE — titoli invisibili, caratteri speciali, payloads XSS
+// ---------------------------------------------------------------------------
+describe("input edge cases", () => {
+  beforeEach(() => {
+    taskService.reset();
+  });
+
+  // --- Titoli visivamente vuoti: devono essere rifiutati (400) ---
+
+  const blankTitles: Array<[string, string]> = [
+    ["spazio singolo", " "],
+    ["solo tab", "\t"],
+    ["solo newline", "\n"],
+    ["tab + newline", "\t\n"],
+    ["zero-width space (U+200B)", "​"],
+    ["zero-width non-joiner (U+200C)", "‌"],
+    ["zero-width joiner (U+200D)", "‍"],
+    ["BOM / zero-width no-break (U+FEFF)", "﻿"],
+    ["mix zero-width + spazi", "​ ‌ \t"],
+    ["control char NUL (U+0000)", "\x00"],
+    ["control char US (U+001F)", "\x1F"],
+    ["control chars multipli", "\x00\x01\x1F"],
+  ];
+
+  for (const [label, value] of blankTitles) {
+    it(`POST title "${label}" → 400`, async () => {
+      const res = await request(app).post("/api/tasks").send({ title: value });
+      expect(res.status).toBe(400);
+      expect(res.headers["content-type"]).toMatch(/problem\+json/);
+    });
+
+    it(`PATCH title "${label}" → 400`, async () => {
+      const { body: created } = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Base" });
+      const res = await request(app)
+        .patch(`/api/tasks/${created.id}`)
+        .send({ title: value });
+      expect(res.status).toBe(400);
+    });
+  }
+
+  // --- Titoli con zero-width ma contenuto reale: devono passare (201) ---
+
+  it('POST "​hello" (ZWS + testo) → 201 accettato', async () => {
+    const res = await request(app)
+      .post("/api/tasks")
+      .send({ title: "​hello" });
+    expect(res.status).toBe(201);
+  });
+
+  // --- Bidi / spoofing: l'API accetta, il frontend è responsabile del render ---
+
+  it("POST title con RTL override (U+202E) → 201 salvato verbatim (responsabilità frontend)", async () => {
+    const title = "Task‮payload";
+    const res = await request(app).post("/api/tasks").send({ title });
+    expect(res.status).toBe(201);
+    expect(res.body.title).toBe(title);
+  });
+
+  // --- XSS payload: API JSON non renderizza HTML, salva verbatim ---
+
+  const xssPayloads = [
+    '<script>alert(1)</script>',
+    '<img src=x onerror=alert(1)>',
+    '"><svg/onload=alert(1)>',
+  ];
+
+  for (const payload of xssPayloads) {
+    it(`POST title XSS "${payload.slice(0, 30)}…" → 201 salvato verbatim`, async () => {
+      const res = await request(app).post("/api/tasks").send({ title: payload });
+      expect(res.status).toBe(201);
+      // L'API restituisce la stringa intatta: il sanitize è responsabilità del client
+      expect(res.body.title).toBe(payload);
+    });
+  }
+
+  // --- description: nessuna validazione, qualsiasi stringa viene salvata ---
+
+  it("POST description XSS → 201 salvato verbatim", async () => {
+    const description = "<script>alert(1)</script>";
+    const res = await request(app)
+      .post("/api/tasks")
+      .send({ title: "T", description });
+    expect(res.status).toBe(201);
+    expect(res.body.description).toBe(description);
+  });
+
+  it("POST description con caratteri zero-width → 201 accettato senza validazione", async () => {
+    const description = "​‌ testo ‍";
+    const res = await request(app)
+      .post("/api/tasks")
+      .send({ title: "T", description });
+    expect(res.status).toBe(201);
+    expect(res.body.description).toBe(description);
+  });
+
+  // --- Property test: qualsiasi titolo con contenuto visibile reale → sempre 201 ---
+
+  const visibleTitleArb = fc
+    .string({ minLength: 1, maxLength: 80 })
+    .filter((s) => s.replace(new RegExp("[​-‍﻿\x00-\x1F]", "g"), "").trim().length > 0);
+
+  test.prop([visibleTitleArb])(
+    "POST: qualsiasi titolo visibile → 201",
+    async (title) => {
+      taskService.reset();
+      const res = await request(app).post("/api/tasks").send({ title });
+      expect(res.status).toBe(201);
+    }
+  );
 });
