@@ -8,3 +8,13 @@ export interface Task {
   status: TaskStatus;
   createdAt: string;
 }
+
+export interface CreateTaskInput {
+  title: string;
+  description?: string;
+}
+
+export interface UpdateTaskInput {
+  title?: string;
+  status?: TaskStatus;
+}
