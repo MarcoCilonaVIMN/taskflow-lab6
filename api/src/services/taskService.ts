@@ -1,19 +1,41 @@
-import type { Task } from "../types";
+import { randomUUID } from "node:crypto";
+import type { Task, TaskStatus, CreateTaskInput, UpdateTaskInput } from "../types";
 
-/**
- * TaskService — logica di business del dominio.
- *
- * TODO (con l'AI): implementa i metodi CRUD usando lo store in-memory `tasks`.
- *   - getAll(status?: TaskStatus): Task[]
- *   - getById(id: string): Task | null
- *   - create(input: CreateTaskInput): Task
- *   - update(id: string, patch: UpdateTaskInput): Task | null
- *   - remove(id: string): boolean
- * Invarianti da rispettare (le verificheremo con fast-check):
- *   - dopo create, getAll() include il task creato
- *   - dopo remove, getById() ritorna null per quell'id
- *   - getAll(status) ritorna solo task con quello stato
- */
 export class TaskService {
-  private tasks: Task[] = [];
+  private tasks: Map<string, Task> = new Map();
+
+  getAll(status?: TaskStatus): Task[] {
+    const all = Array.from(this.tasks.values());
+    return status ? all.filter((t) => t.status === status) : all;
+  }
+
+  getById(id: string): Task | null {
+    return this.tasks.get(id) ?? null;
+  }
+
+  create(input: CreateTaskInput): Task {
+    const task: Task = {
+      id: randomUUID(),
+      title: input.title,
+      description: input.description,
+      status: "todo",
+      createdAt: new Date().toISOString(),
+    };
+    this.tasks.set(task.id, task);
+    return task;
+  }
+
+  update(id: string, patch: UpdateTaskInput): Task | null {
+    const task = this.tasks.get(id);
+    if (!task) return null;
+    const updated: Task = { ...task, ...patch };
+    this.tasks.set(id, updated);
+    return updated;
+  }
+
+  remove(id: string): boolean {
+    return this.tasks.delete(id);
+  }
 }
+
+export const taskService = new TaskService();
