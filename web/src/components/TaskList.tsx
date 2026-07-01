@@ -44,11 +44,10 @@ export function TaskList({ filter, refreshKey }: TaskListProps) {
 
   if (loading) {
     return (
-      <div className="has-text-centered py-6">
-        <span className="icon is-large">
-          <i className="fas fa-spinner fa-pulse" />
-        </span>
-        <p className="has-text-grey mt-2">Caricamento…</p>
+      <div className="py-4">
+        <progress className="progress is-small is-link" max="100">
+          Caricamento…
+        </progress>
       </div>
     );
   }
