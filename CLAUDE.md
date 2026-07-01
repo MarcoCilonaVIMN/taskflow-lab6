@@ -50,6 +50,9 @@ taskflow/
   2. dopo `remove`, `getById()` ritorna `null`;
   3. `getAll(status)` ritorna solo task con quello stato.
 
+## Documentazione
+- **User stories** (5 storie + acceptance criteria): [`docs/user-stories/user-stories.md`](docs/user-stories/user-stories.md)
+
 ## Definition of Done
 4 endpoint funzionanti · validazione + errori RFC 9457 · suite Vitest con coverage > 80% ·
 ≥ 2 property test fast-check · 4 componenti React collegati all'API · CI verde.
