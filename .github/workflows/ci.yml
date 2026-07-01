@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Lint (Biome)
+        run: npm run lint
+      - name: Build API
+        run: npm run build -w api
+      - name: Test API + coverage
+        run: npm run test:coverage -w api
+      - name: Build Web
+        run: npm run build -w web

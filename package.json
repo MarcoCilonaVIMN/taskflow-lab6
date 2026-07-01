@@ -1,0 +1,17 @@
+{
+  "name": "taskflow",
+  "private": true,
+  "version": "0.1.0",
+  "description": "TaskFlow — starter monorepo per il Project Work (Modulo 6)",
+  "workspaces": ["api", "web", "e2e"],
+  "scripts": {
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "dev:api": "npm run dev -w api",
+    "dev:web": "npm run dev -w web",
+    "build": "npm run build -w api && npm run build -w web",
+    "test": "npm run test -w api"
+  },
+  "devDependencies": { "@biomejs/biome": "2.5.0" },
+  "engines": { "node": ">=22" }
+}
