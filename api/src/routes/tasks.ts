@@ -7,7 +7,7 @@ export const tasksRouter = Router();
 
 const VALID_STATUSES: TaskStatus[] = ["todo", "in-progress", "done"];
 
-// Rimuove zero-width (​-‍, ﻿) e control chars (\x00-\x1F),
+// Rimuove zero-width (​-‍, ﻿) e control char (\x00-\x1F),
 // poi applica trim(). Usato per rilevare titoli visivamente vuoti.
 const INVISIBLE_RE = new RegExp("[​-‍﻿\x00-\x1F]", "g");
 function isBlankTitle(value: string): boolean {
