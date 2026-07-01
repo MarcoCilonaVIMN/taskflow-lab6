@@ -182,34 +182,75 @@ describe("remove", () => {
 // PROPERTY TEST — invarianti di dominio con fast-check
 // ---------------------------------------------------------------------------
 describe("property tests", () => {
-  const titleArb = fc.string({ minLength: 1, maxLength: 80 }).filter((s) => s.trim().length > 0);
+  // Arbitrari riusabili
+  const titleArb = fc
+    .oneof(
+      fc.string({ minLength: 1, maxLength: 80 }),
+      fc.constantFrom("Fix bug", "Review PR", "Deploy", "Write docs", "A", "  hello  ")
+    )
+    .filter((s) => s.trim().length > 0);
+
   const statusArb = fc.constantFrom<TaskStatus>("todo", "in-progress", "done");
 
-  test.prop([titleArb])(
-    "dopo create, getAll() include sempre il task creato",
-    (title) => {
-      const task = svc.create({ title });
-      const all = svc.getAll();
-      expect(all.some((t) => t.id === task.id)).toBe(true);
+  const descriptionArb = fc.option(fc.string({ minLength: 1, maxLength: 200 }), { nil: undefined });
+
+  // --- Proprietà 1 ---
+  // Per qualsiasi titolo non-vuoto, create() restituisce un task con esattamente quel titolo
+  test.prop([titleArb, descriptionArb])(
+    "create: il task restituito ha esattamente il titolo passato in input",
+    (title, description) => {
+      const task = svc.create({ title, description });
+
+      expect(task.title).toBe(title);
+      expect(task.status).toBe("todo");
+      expect(task.id).toBeTypeOf("string");
+      expect(task.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      if (description !== undefined) expect(task.description).toBe(description);
     }
   );
 
+  // --- Proprietà 2 ---
+  // Dopo remove(), getById() ritorna sempre null per quell'id
   test.prop([titleArb])(
-    "dopo remove, getById() ritorna null",
+    "remove: dopo la cancellazione getById() ritorna null",
     (title) => {
       const task = svc.create({ title });
       svc.remove(task.id);
+
       expect(svc.getById(task.id)).toBeNull();
     }
   );
 
-  test.prop([titleArb, statusArb])(
-    "getAll(status) ritorna solo task con quello status",
-    (title, status) => {
-      const task = svc.create({ title });
-      svc.update(task.id, { status });
-      const filtered = svc.getAll(status);
-      expect(filtered.every((t) => t.status === status)).toBe(true);
+  // --- Proprietà 3 ---
+  // getAll(status) ritorna esclusivamente task con quello status,
+  // anche in presenza di altri task con stati diversi
+  test.prop([
+    fc.array(fc.record({ title: titleArb, status: statusArb }), { minLength: 1, maxLength: 10 }),
+    statusArb,
+  ])(
+    "getAll(status): ogni elemento del risultato ha esattamente lo status filtrato",
+    (inputs, filterStatus) => {
+      // Popolazione store con task a stati misti
+      for (const { title, status } of inputs) {
+        const t = svc.create({ title });
+        svc.update(t.id, { status });
+      }
+
+      const filtered = svc.getAll(filterStatus);
+
+      expect(filtered.every((t) => t.status === filterStatus)).toBe(true);
+    }
+  );
+
+  // --- Proprietà bonus ---
+  // getAll() senza filtro include tutti i task creati (nessuna perdita)
+  test.prop([fc.array(titleArb, { minLength: 1, maxLength: 15 })])(
+    "getAll senza filtro include tutti i task creati",
+    (titles) => {
+      const ids = titles.map((title) => svc.create({ title }).id);
+      const allIds = svc.getAll().map((t) => t.id);
+
+      expect(ids.every((id) => allIds.includes(id))).toBe(true);
     }
   );
 });
