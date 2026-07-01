@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach } from "vitest";
 import { test } from "@fast-check/vitest";
 import * as fc from "fast-check";
+import request from "supertest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { app } from "../app";
 import { TaskService, taskService } from "../services/taskService";
 import type { TaskStatus } from "../types";
-import request from "supertest";
-import { app } from "../app";
 
 // ---------------------------------------------------------------------------
 // SERVICE — istanza fresca per ogni test unitario
@@ -119,32 +119,32 @@ describe("update", () => {
     const updated = svc.update(task.id, { title: "Nuovo titolo" });
 
     expect(updated).not.toBeNull();
-    expect(updated!.title).toBe("Nuovo titolo");
-    expect(updated!.status).toBe("todo");
+    expect(updated?.title).toBe("Nuovo titolo");
+    expect(updated?.status).toBe("todo");
   });
 
   it("aggiorna lo status", () => {
     const task = svc.create({ title: "T" });
     const updated = svc.update(task.id, { status: "in-progress" });
 
-    expect(updated!.status).toBe("in-progress");
-    expect(updated!.title).toBe("T");
+    expect(updated?.status).toBe("in-progress");
+    expect(updated?.title).toBe("T");
   });
 
   it("aggiorna title e status insieme", () => {
     const task = svc.create({ title: "T" });
     const updated = svc.update(task.id, { title: "U", status: "done" });
 
-    expect(updated!.title).toBe("U");
-    expect(updated!.status).toBe("done");
+    expect(updated?.title).toBe("U");
+    expect(updated?.status).toBe("done");
   });
 
   it("id e createdAt restano invariati dopo update", () => {
     const task = svc.create({ title: "T" });
     const updated = svc.update(task.id, { title: "Nuovo", status: "done" });
 
-    expect(updated!.id).toBe(task.id);
-    expect(updated!.createdAt).toBe(task.createdAt);
+    expect(updated?.id).toBe(task.id);
+    expect(updated?.createdAt).toBe(task.createdAt);
   });
 
   it("patch vuota {} restituisce il task invariato", () => {
@@ -157,7 +157,7 @@ describe("update", () => {
   it("persiste la modifica — getById riflette il nuovo valore", () => {
     const task = svc.create({ title: "T" });
     svc.update(task.id, { status: "done" });
-    expect(svc.getById(task.id)!.status).toBe("done");
+    expect(svc.getById(task.id)?.status).toBe("done");
   });
 
   it("ritorna null per id inesistente", () => {
@@ -169,7 +169,7 @@ describe("update", () => {
     const b = svc.create({ title: "B" });
     svc.update(a.id, { status: "done" });
 
-    expect(svc.getById(b.id)!.status).toBe("todo");
+    expect(svc.getById(b.id)?.status).toBe("todo");
   });
 });
 
@@ -214,12 +214,22 @@ describe("property tests", () => {
   const titleArb = fc
     .oneof(
       fc.string({ minLength: 1, maxLength: 80 }),
-      fc.constantFrom("Fix bug", "Review PR", "Deploy", "Write docs", "A", "  hello  ")
+      fc.constantFrom(
+        "Fix bug",
+        "Review PR",
+        "Deploy",
+        "Write docs",
+        "A",
+        "  hello  ",
+      ),
     )
     .filter((s) => s.trim().length > 0);
 
   const statusArb = fc.constantFrom<TaskStatus>("todo", "in-progress", "done");
-  const descriptionArb = fc.option(fc.string({ minLength: 1, maxLength: 200 }), { nil: undefined });
+  const descriptionArb = fc.option(
+    fc.string({ minLength: 1, maxLength: 200 }),
+    { nil: undefined },
+  );
 
   // Proprietà 1: create restituisce un task con esattamente il titolo passato
   test.prop([titleArb, descriptionArb])(
@@ -232,7 +242,7 @@ describe("property tests", () => {
       expect(task.id).toBeTypeOf("string");
       expect(task.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
       if (description !== undefined) expect(task.description).toBe(description);
-    }
+    },
   );
 
   // Proprietà 2: dopo remove(), getById() ritorna sempre null
@@ -243,13 +253,16 @@ describe("property tests", () => {
       svc.remove(task.id);
 
       expect(svc.getById(task.id)).toBeNull();
-    }
+    },
   );
 
   // Proprietà 3: getAll(status) ritorna esattamente i task con quello status
   // — verifica sia "nessun intruso" sia "nessuna omissione"
   test.prop([
-    fc.array(fc.record({ title: titleArb, status: statusArb }), { minLength: 1, maxLength: 10 }),
+    fc.array(fc.record({ title: titleArb, status: statusArb }), {
+      minLength: 1,
+      maxLength: 10,
+    }),
     statusArb,
   ])(
     "getAll(status): risultato coincide esattamente con i task aventi quello status",
@@ -260,14 +273,16 @@ describe("property tests", () => {
         return { ...t, status };
       });
 
-      const expectedCount = created.filter((t) => t.status === filterStatus).length;
+      const expectedCount = created.filter(
+        (t) => t.status === filterStatus,
+      ).length;
       const filtered = svc.getAll(filterStatus);
 
       // nessun intruso
       expect(filtered.every((t) => t.status === filterStatus)).toBe(true);
       // nessuna omissione
       expect(filtered).toHaveLength(expectedCount);
-    }
+    },
   );
 
   // Proprietà bonus: getAll() senza filtro non perde task
@@ -278,7 +293,7 @@ describe("property tests", () => {
       const allIds = svc.getAll().map((t) => t.id);
 
       expect(ids.every((id) => allIds.includes(id))).toBe(true);
-    }
+    },
   );
 });
 
@@ -316,7 +331,9 @@ describe("routes", () => {
 
     const res = await request(app).get("/api/tasks?status=todo");
     expect(res.status).toBe(200);
-    expect(res.body.every((t: { status: string }) => t.status === "todo")).toBe(true);
+    expect(res.body.every((t: { status: string }) => t.status === "todo")).toBe(
+      true,
+    );
   });
 
   it("POST con titolo valido → 201 + body corretto", async () => {
@@ -362,9 +379,7 @@ describe("routes", () => {
       .post("/api/tasks")
       .send({ title: "Stabile" });
 
-    const res = await request(app)
-      .patch(`/api/tasks/${created.id}`)
-      .send({});
+    const res = await request(app).patch(`/api/tasks/${created.id}`).send({});
 
     expect(res.status).toBe(200);
     expect(res.body.title).toBe("Stabile");
@@ -435,7 +450,11 @@ describe("routes", () => {
 
     expect(res.status).toBe(400);
     expect(res.headers["content-type"]).toMatch(/problem\+json/);
-    expect(res.body).toMatchObject({ status: 400, title: "Bad Request", detail: expect.any(String) });
+    expect(res.body).toMatchObject({
+      status: 400,
+      title: "Bad Request",
+      detail: expect.any(String),
+    });
   });
 
   it("PATCH titolo solo spazi → 400", async () => {
@@ -457,7 +476,11 @@ describe("routes", () => {
 
     expect(res.status).toBe(400);
     expect(res.headers["content-type"]).toMatch(/problem\+json/);
-    expect(res.body).toMatchObject({ status: 400, title: "Bad Request", detail: expect.any(String) });
+    expect(res.body).toMatchObject({
+      status: 400,
+      title: "Bad Request",
+      detail: expect.any(String),
+    });
   });
 
   it("PATCH id inesistente → 404 RFC 9457 completo", async () => {
@@ -562,9 +585,7 @@ describe("input edge cases", () => {
   // --- Titoli con zero-width ma contenuto reale: devono passare (201) ---
 
   it('POST "​hello" (ZWS + testo) → 201 accettato', async () => {
-    const res = await request(app)
-      .post("/api/tasks")
-      .send({ title: "​hello" });
+    const res = await request(app).post("/api/tasks").send({ title: "​hello" });
     expect(res.status).toBe(201);
   });
 
@@ -580,14 +601,16 @@ describe("input edge cases", () => {
   // --- XSS payload: API JSON non renderizza HTML, salva verbatim ---
 
   const xssPayloads = [
-    '<script>alert(1)</script>',
-    '<img src=x onerror=alert(1)>',
+    "<script>alert(1)</script>",
+    "<img src=x onerror=alert(1)>",
     '"><svg/onload=alert(1)>',
   ];
 
   for (const payload of xssPayloads) {
     it(`POST title XSS "${payload.slice(0, 30)}…" → 201 salvato verbatim`, async () => {
-      const res = await request(app).post("/api/tasks").send({ title: payload });
+      const res = await request(app)
+        .post("/api/tasks")
+        .send({ title: payload });
       expect(res.status).toBe(201);
       // L'API restituisce la stringa intatta: il sanitize è responsabilità del client
       expect(res.body.title).toBe(payload);
@@ -618,7 +641,18 @@ describe("input edge cases", () => {
 
   const visibleTitleArb = fc
     .string({ minLength: 1, maxLength: 80 })
-    .filter((s) => s.replace(new RegExp("[​-‍﻿\x00-\x1F]", "g"), "").trim().length > 0);
+    .filter((s) => {
+      for (const char of s) {
+        const cp = char.codePointAt(0) ?? 0;
+        const invisible =
+          cp <= 0x001f ||
+          (cp >= 0x200b && cp <= 0x200d) ||
+          cp === 0xfeff ||
+          char.trim() === "";
+        if (!invisible) return true;
+      }
+      return false;
+    });
 
   test.prop([visibleTitleArb])(
     "POST: qualsiasi titolo visibile → 201",
@@ -626,6 +660,6 @@ describe("input edge cases", () => {
       taskService.reset();
       const res = await request(app).post("/api/tasks").send({ title });
       expect(res.status).toBe(201);
-    }
+    },
   );
 });

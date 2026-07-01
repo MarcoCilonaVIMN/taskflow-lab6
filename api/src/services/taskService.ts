@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
-import type { Task, TaskStatus, CreateTaskInput, UpdateTaskInput } from "../types";
+import type {
+  CreateTaskInput,
+  Task,
+  TaskStatus,
+  UpdateTaskInput,
+} from "../types";
 
 export class TaskService {
   private tasks: Map<string, Task> = new Map();

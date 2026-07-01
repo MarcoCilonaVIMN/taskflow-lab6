@@ -1,17 +1,26 @@
-import { Router } from "express";
 import type { Request, Response } from "express";
+import { Router } from "express";
 import { taskService } from "../services/taskService";
-import type { TaskStatus, CreateTaskInput, UpdateTaskInput } from "../types";
+import type { CreateTaskInput, TaskStatus, UpdateTaskInput } from "../types";
 
 export const tasksRouter = Router();
 
 const VALID_STATUSES: TaskStatus[] = ["todo", "in-progress", "done"];
 
-// Rimuove zero-width (​-‍, ﻿) e control char (\x00-\x1F),
-// poi applica trim(). Usato per rilevare titoli visivamente vuoti.
-const INVISIBLE_RE = new RegExp("[​-‍﻿\x00-\x1F]", "g");
+// Ritorna true se il titolo è composto solo da caratteri invisibili:
+// spazi/whitespace classici, control chars (U+0000-U+001F),
+// zero-width (U+200B-U+200D) e BOM (U+FEFF).
 function isBlankTitle(value: string): boolean {
-  return value.replace(INVISIBLE_RE, "").trim() === "";
+  for (const char of value) {
+    const cp = char.codePointAt(0) ?? 0;
+    const isInvisible =
+      cp <= 0x001f ||
+      (cp >= 0x200b && cp <= 0x200d) ||
+      cp === 0xfeff ||
+      char.trim() === "";
+    if (!isInvisible) return false;
+  }
+  return true;
 }
 
 function problem(res: Response, status: number, title: string, detail: string) {
