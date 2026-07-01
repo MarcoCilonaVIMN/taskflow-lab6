@@ -6,8 +6,8 @@ export default defineConfig({
     include: ["src/**/*.{test,spec}.ts"],
     passWithNoTests: true,
     coverage: {
-      provider: "v8",
-      reporter: ["text", "html"],
+      provider: "istanbul",
+      reporter: ["text", "html", "lcov"],
       include: ["src/**/*.ts"],
       exclude: ["src/**/*.test.ts", "src/server.ts"],
       // Soglia indicativa: scommenta per rendere il gate vincolante in CI
